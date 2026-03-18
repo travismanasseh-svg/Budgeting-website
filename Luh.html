@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FinancePro</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:sans-serif;}
+body{background:#0f172a;color:#e2e8f0;}
+
+nav{display:flex;justify-content:space-around;background:#020617;padding:10px;}
+nav button{background:none;border:none;color:#94a3b8;cursor:pointer;}
+.active{color:#38bdf8;}
+
+.section{display:none;padding:20px;}
+.active-section{display:block;}
+
+.card{background:#1e293b;padding:20px;border-radius:12px;margin-bottom:20px;}
+.summary{display:flex;justify-content:space-between;text-align:center;}
+
+input,select{
+width:100%;padding:10px;margin:8px 0;border:none;
+border-radius:6px;background:#020617;color:white;
+}
+
+button{
+width:100%;padding:10px;background:#38bdf8;border:none;
+border-radius:6px;font-weight:bold;cursor:pointer;
+}
+
+ul{list-style:none;}
+li{
+background:#020617;margin:5px 0;padding:10px;border-radius:6px;
+display:flex;justify-content:space-between;
+}
+</style>
+</head>
+
+<body>
+
+<nav>
+<button onclick="show('home',event)" class="active">Home</button>
+<button onclick="show('dash',event)">Dashboard</button>
+<button onclick="show('add',event)">Add</button>
+<button onclick="show('history',event)">History</button>
+<button onclick="show('report',event)">Reports</button>
+<button onclick="show('insights',event)">AI Insights</button>
+<button onclick="exportPDF()">Export</button>
+</nav>
+
+<!-- HOME -->
+<div id="home" class="section active-section">
+<div class="card">
+<h2>Welcome to FinancePro</h2>
+<p>
+This system helps you track income, manage expenses, analyze spending patterns,
+set limits, and receive smart financial advice.
+</p>
+</div>
+</div>
+
+<!-- DASH -->
+<div id="dash" class="section">
+<div class="card summary">
+<div><h3>Income</h3><p id="incDisplay">0</p></div>
+<div><h3>Expenses</h3><p id="expDisplay">0</p></div>
+<div><h3>Balance</h3><p id="balDisplay">0</p></div>
+</div>
+
+<div class="card">
+<h3>Category Spending</h3>
+<canvas id="pie"></canvas>
+</div>
+
+<div class="card">
+<h3>Spending Over Time</h3>
+<canvas id="line"></canvas>
+</div>
+</div>
+
+<!-- ADD -->
+<div id="add" class="section">
+<div class="card">
+<h2>Add Transaction</h2>
+<input id="desc" placeholder="Description">
+<input id="amount" type="number" placeholder="Amount">
+
+<select id="type">
+<option value="income">Income</option>
+<option value="expense">Expense</option>
+</select>
+
+<select id="category">
+<option>Food</option>
+<option>Transport</option>
+<option>Bills</option>
+<option>School</option>
+<option>Entertainment</option>
+</select>
+
+<input type="date" id="date">
+
+<h3>Budget Limit</h3>
+<input id="limitInput" type="number" placeholder="Enter monthly limit">
+<button onclick="setLimit()">Save Limit</button>
+
+<button onclick="add()">Add Transaction</button>
+</div>
+</div>
+
+<!-- HISTORY -->
+<div id="history" class="section">
+<div class="card">
+<h2>Transactions</h2>
+<ul id="list"></ul>
+</div>
+</div>
+
+<!-- REPORT -->
+<div id="report" class="section">
+<div class="card">
+<h2>Monthly Report</h2>
+<select id="month" onchange="monthly()">
+<option value="">All</option>
+<option value="0">Jan</option>
+<option value="1">Feb</option>
+<option value="2">Mar</option>
+<option value="3">Apr</option>
+<option value="4">May</option>
+<option value="5">Jun</option>
+<option value="6">Jul</option>
+<option value="7">Aug</option>
+<option value="8">Sep</option>
+<option value="9">Oct</option>
+<option value="10">Nov</option>
+<option value="11">Dec</option>
+</select>
+
+<p id="rep"></p>
+</div>
+</div>
+
+<!-- AI -->
+<div id="insights" class="section">
+<div class="card">
+<h2>AI Financial Advice</h2>
+<p id="advice"></p>
+</div>
+</div>
+
+<script>
+let data = JSON.parse(localStorage.getItem("data")) || [];
+let limit = localStorage.getItem("limit") || 0;
+let pieChart, lineChart;
+
+/* NAV */
+function show(id,e){
+document.querySelectorAll(".section").forEach(s=>s.classList.remove("active-section"));
+document.getElementById(id).classList.add("active-section");
+
+document.querySelectorAll("nav button").forEach(b=>b.classList.remove("active"));
+e.target.classList.add("active");
+}
+
+/* ADD */
+function add(){
+let descVal = document.getElementById("desc").value;
+let amountVal = parseFloat(document.getElementById("amount").value);
+let typeVal = document.getElementById("type").value;
+let categoryVal = document.getElementById("category").value;
+let dateVal = document.getElementById("date").value;
+
+if(!descVal || !amountVal || !dateVal){
+alert("Fill all fields");
+return;
+}
+
+data.push({
+desc: descVal,
+amount: amountVal,
+type: typeVal,
+category: categoryVal,
+date: dateVal
+});
+
+localStorage.setItem("data", JSON.stringify(data));
+update();
+}
+
+/* LIMIT */
+function setLimit(){
+limit = document.getElementById("limitInput").value;
+localStorage.setItem("limit", limit);
+}
+
+/* DELETE */
+function del(i){
+data.splice(i,1);
+localStorage.setItem("data", JSON.stringify(data));
+update();
+}
+
+/* UPDATE */
+function update(){
+let inc=0, exp=0, cats={}, dates={};
+let list=document.getElementById("list");
+list.innerHTML="";
+
+data.forEach((t,i)=>{
+if(t.type==="income") inc+=t.amount;
+else{
+exp+=t.amount;
+cats[t.category]=(cats[t.category]||0)+t.amount;
+dates[t.date]=(dates[t.date]||0)+t.amount;
+}
+
+list.innerHTML+=`<li>${t.desc} - ${t.amount}
+<span onclick="del(${i})">✖</span></li>`;
+});
+
+document.getElementById("incDisplay").innerText=inc;
+document.getElementById("expDisplay").innerText=exp;
+document.getElementById("balDisplay").innerText=inc-exp;
+
+/* PIE */
+if(pieChart) pieChart.destroy();
+pieChart=new Chart(document.getElementById("pie"),{
+type:"pie",
+data:{labels:Object.keys(cats),datasets:[{data:Object.values(cats)}]}
+});
+
+/* LINE */
+if(lineChart) lineChart.destroy();
+lineChart=new Chart(document.getElementById("line"),{
+type:"line",
+data:{labels:Object.keys(dates),datasets:[{data:Object.values(dates)}]}
+});
+
+/* LIMIT ALERT */
+if(limit && exp > limit){
+alert("⚠️ Budget limit exceeded!");
+}
+
+/* AI */
+let msg="";
+if(exp>inc) msg="You are spending more than you earn.";
+else if(inc && exp/inc>0.7) msg="High spending detected. Try cutting costs.";
+else msg="Good financial control.";
+
+document.getElementById("advice").innerText=msg;
+}
+
+/* MONTHLY */
+function monthly(){
+let m=document.getElementById("month").value;
+let inc=0,exp=0;
+
+data.forEach(t=>{
+let d=new Date(t.date).getMonth();
+if(m==="" || d==m){
+if(t.type==="income") inc+=t.amount;
+else exp+=t.amount;
+}
+});
+
+document.getElementById("rep").innerText=
+`Income: ${inc} | Expenses: ${exp} | Balance: ${inc-exp}`;
+}
+
+/* PDF */
+function exportPDF(){
+const {jsPDF}=window.jspdf;
+let doc=new jsPDF();
+doc.text("Finance Report",10,10);
+
+let y=20;
+data.forEach(t=>{
+doc.text(`${t.desc} - ${t.amount}`,10,y);
+y+=10;
+});
+
+doc.save("report.pdf");
+}
+
+update();
+</script>
+
+</body>
+</html>
+
+
